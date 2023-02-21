@@ -92,7 +92,6 @@ const getAllReservations = function(guest_id, limit = 10) {
   .catch((err) => {
     console.log(err.message);
   });
-  return getAllProperties(null, 2);
 }
 exports.getAllReservations = getAllReservations;
 
@@ -104,15 +103,61 @@ exports.getAllReservations = getAllReservations;
  * @param {*} limit The number of results to return.
  * @return {Promise<[{}]>}  A promise to the properties.
  */
-const getAllProperties = (options, limit = 10) => {
+const getAllProperties = function (options, limit = 10) {
+
+  const queryParams = [];
+  let queryHelper;
+
+  let queryString = `
+  SELECT properties.*, avg(property_reviews.rating) as average_rating
+  FROM properties
+  JOIN property_reviews ON properties.id = property_id
+  `;
+
+  if (options.city) {
+    queryParams.push(`%${options.city}%`);
+    queryString += `WHERE city LIKE $${queryParams.length} `;
+  }
+
+  if (options.owner_id) {
+    queryHelper = queryParams.length > 0 ? 'AND' : 'WHERE';
+    queryParams.push(options.owner_id);
+    queryString += `${queryHelper} properties.owner_id = $${queryParams.length} `;
+  }
+
+  if (options.minimum_price_per_night) {
+    queryHelper = queryParams.length > 0 ? 'AND' : 'WHERE';
+    queryParams.push(options.minimum_price_per_night * 100);
+    queryString += `${queryHelper} cost_per_night >= $${queryParams.length} `;
+  }
+
+  if (options.maximum_price_per_night) {
+    queryHelper = queryParams.length > 0 ? 'AND' : 'WHERE';
+    queryParams.push(options.maximum_price_per_night * 100);
+    queryString += `${queryHelper} cost_per_night <= $${queryParams.length} `;
+  }
+
+  queryString += 'GROUP BY properties.id '
+
+  if (options.minimum_rating) {
+    queryParams.push(options.minimum_rating);
+    queryString += `HAVING avg(property_reviews.rating) >= $${queryParams.length} `;
+  }
+
+  queryParams.push(limit);
+  queryString += `
+  ORDER BY cost_per_night
+  LIMIT $${queryParams.length};
+  `;
+
   return pool
-    .query(`SELECT * FROM properties LIMIT $1`, [limit])
-    .then((result) => {
-      return result.rows;
-    })
-    .catch((err) => {
-      console.log(err.message);
-    });
+  .query(queryString, queryParams)
+  .then((result) => {
+    return result.rows || null;
+  })
+  .catch((err) => {
+    console.log(err.message);
+  });
 };
 exports.getAllProperties = getAllProperties;
 
